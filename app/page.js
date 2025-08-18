@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 export default function Home() {
   const [selectedYear, setSelectedYear] = useState(null);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedClassid, setSelectedClassid] = useState(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +74,6 @@ export default function Home() {
 
       // Create slug from class name
       const classSlug = selectedClass.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-
       router.push(`/chat/${classSlug}`);
     } catch (err) {
       setError(err.message);
