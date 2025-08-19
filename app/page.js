@@ -73,7 +73,7 @@ export default function Home() {
       }
 
       // Create slug from class name
-      const classSlug = selectedClass.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const classSlug = `${selectedClass}-${selectedYear}`;
       router.push(`/chat/${classSlug}`);
     } catch (err) {
       setError(err.message);
