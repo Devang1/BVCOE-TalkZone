@@ -20,7 +20,6 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const classId=null;
   useEffect(()=>{
     async function getClassId(year, className) {
   try {
