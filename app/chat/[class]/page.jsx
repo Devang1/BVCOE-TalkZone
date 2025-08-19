@@ -8,7 +8,8 @@ import { FiSend, FiImage, FiX, FiDownload } from 'react-icons/fi';
 export default function ChatPage() {
   const router = useRouter();
   const params = useParams();
-  const classId = params.class;
+  const classParam = params.class;
+  const [className, year] = classParam.split("-");
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
