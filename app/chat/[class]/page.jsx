@@ -37,7 +37,7 @@ export default function ChatPage() {
   }
 }
 getClassId(year, className);
-  })
+  },[year, className])
   // Fetch messages
   useEffect(() => {
     if (!classId) return;
@@ -52,9 +52,19 @@ getClassId(year, className);
     return () => clearInterval(interval);
   }, [classId]);
 
-  useEffect(() => {
+  const chatContainerRef = useRef(null);
+
+useEffect(() => {
+  const el = chatContainerRef.current;
+  if (!el) return;
+
+  const isNearBottom =
+    el.scrollHeight - el.scrollTop - el.clientHeight < 100; // within 100px of bottom
+
+  if (isNearBottom) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }
+}, [messages]);
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() && !imagePreview) return;
@@ -188,7 +198,7 @@ getClassId(year, className);
           <div className="w-8" />
         </header>
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <div className="text-2xl mb-2">💬</div>
@@ -269,7 +279,7 @@ getClassId(year, className);
               value={newMessage} 
               onChange={(e) => setNewMessage(e.target.value)} 
               placeholder="Type a message..." 
-              className="flex-1 border border-gray-200 rounded-full py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" 
+              className="flex-1 border border-gray-200 rounded-full text-black py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" 
             />
             <input 
               type="file" 
