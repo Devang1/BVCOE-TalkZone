@@ -279,7 +279,7 @@ useEffect(() => {
               value={newMessage} 
               onChange={(e) => setNewMessage(e.target.value)} 
               placeholder="Type a message..." 
-              className="flex-1 border border-gray-200 rounded-full text-black py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" 
+              className="flex-1 border border-gray-700 rounded-full text-black py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" 
             />
             <input 
               type="file" 
