@@ -23,7 +23,7 @@ export default function ChatPage() {
   useEffect(()=>{
     async function getClassId(year, className) {
   try {
-    const res = await fetch(`/api/get-class?year=${year}&className=${className}`);
+    const res = await fetch(`/api/auth?year=${year}&className=${className}`);
     const data = await res.json();
     console.log(data);
     if (data.success) {
