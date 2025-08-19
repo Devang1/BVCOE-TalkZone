@@ -14,6 +14,7 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [classId, setClassId] = useState(null);
   const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
@@ -28,7 +29,7 @@ export default function ChatPage() {
     console.log(data);
     if (data.success) {
       console.log("Class ID:", data.classId);
-      return data.classId;
+      setClassId(data.classId);
     } else {
       console.error("Error:", data.message);
     }
@@ -36,7 +37,7 @@ export default function ChatPage() {
     console.error("Fetch error:", err);
   }
 }
-classId=getClassId(year, className);
+getClassId(year, className);
   })
   // Fetch messages
   useEffect(() => {
