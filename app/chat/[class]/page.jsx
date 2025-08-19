@@ -19,11 +19,25 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-
-  const className = classId
-    ? decodeURIComponent(classId).split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
-    : '';
-
+  const classId=null;
+  useEffect(()=>{
+    async function getClassId(year, className) {
+  try {
+    const res = await fetch(`/api/get-class?year=${year}&className=${className}`);
+    const data = await res.json();
+    console.log(data);
+    if (data.success) {
+      console.log("Class ID:", data.classId);
+      return data.classId;
+    } else {
+      console.error("Error:", data.message);
+    }
+  } catch (err) {
+    console.error("Fetch error:", err);
+  }
+}
+classId=getClassId(year, className);
+  })
   // Fetch messages
   useEffect(() => {
     if (!classId) return;
@@ -41,7 +55,6 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() && !imagePreview) return;
