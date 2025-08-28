@@ -25,28 +25,19 @@ export async function POST(request) {
       return NextResponse.json({ error: 'classId required' }, { status: 400 });
     }
 
-    // Crop message text to 500 words (preserve newlines)
+    // Crop message text to 500 words (but don't modify spaces/newlines at all)
     let croppedText = null;
     if (text) {
-      // Normalize spaces but keep \n intact - enhanced for better newline preservation
-      const cleaned = text
-        .replace(/[ \t]+/g, " ")          // collapse spaces/tabs
-        .replace(/^[ \t]+/gm, "")         // trim spaces/tabs at start of each line
-        .replace(/[ \t]+$/gm, "")         // trim spaces/tabs at end of each line
-        .replace(/(\r\n|\n|\r)/g, "\n")   // normalize all line endings to \n
-        .replace(/ *\n */g, "\n");        // trim spaces around newlines
-
-      // Split into tokens while preserving all whitespace including newlines
-      const tokens = cleaned.split(/(\s+)/); // keeps whitespace (\n, spaces, tabs) as tokens
+      const tokens = text.split(/(\s+)/); // split but preserve whitespace & newlines
       let wordCount = 0;
       let limitedTokens = [];
 
       for (let token of tokens) {
         if (/\s+/.test(token)) {
-          // whitespace or newline → always keep (this preserves all formatting)
+          // whitespace/newline → always keep
           limitedTokens.push(token);
         } else if (token.length > 0) {
-          // it's a word (non-whitespace content)
+          // it's a word
           if (wordCount < 500) {
             limitedTokens.push(token);
             wordCount++;
@@ -57,8 +48,8 @@ export async function POST(request) {
       }
 
       croppedText = limitedTokens.join("");
-      
-      // Optional: Add ellipsis if text was truncated
+
+      // Optional: add ellipsis if truncated
       if (wordCount >= 500) {
         croppedText += "...";
       }
