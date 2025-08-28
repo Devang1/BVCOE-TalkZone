@@ -311,14 +311,21 @@ useEffect(() => {
             </div>
           )}
           <div className="flex items-center space-x-2">
-            <input 
-              type="text" 
-              value={newMessage} 
-              onChange={(e) => setNewMessage(e.target.value)}
+            <textarea
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+            
+                // Auto-grow textarea
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
               onPaste={handlePaste}
-              placeholder="Type a message... or paste an image" 
-              className="flex-1 border border-gray-700 rounded-full text-black py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" 
+              placeholder="Type a message... or paste an image"
+              rows={1}
+              className="flex-1 border border-gray-700 rounded-full text-black py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none overflow-hidden"
             />
+
             <input 
               type="file" 
               ref={fileInputRef} 
