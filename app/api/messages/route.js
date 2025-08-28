@@ -25,19 +25,26 @@ export async function POST(request) {
       return NextResponse.json({ error: 'classId required' }, { status: 400 });
     }
 
-    // Crop message text to 500 words (if provided)
+    // Crop message text to 500 words (preserve newlines)
     let croppedText = null;
     if (text) {
-      // Keep newlines, only collapse multiple spaces/tabs
-      let words = text
-        .trim()
-        .replace(/[ \t]+/g, " ") // collapse spaces/tabs into one
-        .split(/\s/); // split on whitespace but keeps \n intact
-       
+      // Normalize spaces but keep \n intact
+      const cleaned = text
+        .replace(/[ \t]+/g, " ")     // collapse spaces/tabs
+        .replace(/ *\n */g, "\n");   // trim spaces around newlines
+
+      // Count words ignoring newlines
+      let words = cleaned.split(/\s+/).filter(Boolean);
       if (words.length > 500) {
         words = words.slice(0, 500);
       }
-      croppedText = words.join(" ");
+
+      // Reconstruct text with preserved newlines
+      const regex = new RegExp(
+        words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+        "g"
+      );
+      croppedText = cleaned.match(regex)?.join(" ") || cleaned;
     }
 
     const result = await pool.query(
