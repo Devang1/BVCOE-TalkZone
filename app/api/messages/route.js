@@ -33,18 +33,27 @@ export async function POST(request) {
         .replace(/[ \t]+/g, " ")     // collapse spaces/tabs
         .replace(/ *\n */g, "\n");   // trim spaces around newlines
 
-      // Count words ignoring newlines
-      let words = cleaned.split(/\s+/).filter(Boolean);
-      if (words.length > 500) {
-        words = words.slice(0, 500);
+      // Split into words while keeping newlines
+      const tokens = cleaned.split(/(\s+)/); // keeps whitespace (\n, spaces, tabs) as tokens
+      let wordCount = 0;
+      let limitedTokens = [];
+
+      for (let token of tokens) {
+        if (/\s+/.test(token)) {
+          // whitespace or newline → always keep
+          limitedTokens.push(token);
+        } else {
+          // it's a word
+          if (wordCount < 500) {
+            limitedTokens.push(token);
+            wordCount++;
+          } else {
+            break;
+          }
+        }
       }
 
-      // Reconstruct text with preserved newlines
-      const regex = new RegExp(
-        words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
-        "g"
-      );
-      croppedText = cleaned.match(regex)?.join(" ") || cleaned;
+      croppedText = limitedTokens.join("");
     }
 
     const result = await pool.query(
