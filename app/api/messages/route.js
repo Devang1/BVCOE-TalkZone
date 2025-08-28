@@ -28,7 +28,12 @@ export async function POST(request) {
     // Crop message text to 500 words (if provided)
     let croppedText = null;
     if (text) {
-      let words = text.trim().split(/\s+/).filter(Boolean);
+      // Keep newlines, only collapse multiple spaces/tabs
+      let words = text
+        .trim()
+        .replace(/[ \t]+/g, " ") // collapse spaces/tabs into one
+        .split(/\s/); // split on whitespace but keeps \n intact
+       
       if (words.length > 500) {
         words = words.slice(0, 500);
       }
