@@ -20,6 +20,43 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const handlePaste = async (e) => {
+  const items = e.clipboardData.items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf("image") !== -1) {
+      const file = items[i].getAsFile();
+      if (file) {
+        await uploadPastedImage(file);
+      }
+    }
+  }
+};
+
+const uploadPastedImage = async (file) => {
+  setIsUploading(true);
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', UPLOAD_PRESET);
+
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.secure_url) {
+      setImagePreview(data.secure_url); // ✅ same as file input
+    } else {
+      alert('Paste upload failed');
+    }
+  } catch (error) {
+    alert('Upload error');
+  } finally {
+    setIsUploading(false);
+  }
+};
+
   useEffect(()=>{
     async function getClassId(year, className) {
   try {
@@ -233,7 +270,7 @@ useEffect(() => {
                       </button>
                     </div>
                   )}
-                  {msg.text && <p>{msg.text}</p>}
+                  {msg.text && <p className="whitespace-pre-line">{msg.text}</p>}
                   <p className={`text-xs mt-1 ${msg.sender === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
@@ -277,8 +314,9 @@ useEffect(() => {
             <input 
               type="text" 
               value={newMessage} 
-              onChange={(e) => setNewMessage(e.target.value)} 
-              placeholder="Type a message..." 
+              onChange={(e) => setNewMessage(e.target.value)}
+              onPaste={handlePaste}
+              placeholder="Type a message... or paste an image" 
               className="flex-1 border border-gray-700 rounded-full text-black py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white" 
             />
             <input 
