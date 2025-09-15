@@ -19,7 +19,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { classId, text, imageUrl } = body;
+    const { classId, text, imageUrl ,fileType} = body;
 
     if (!classId) {
       return NextResponse.json({ error: 'classId required' }, { status: 400 });
@@ -56,9 +56,9 @@ export async function POST(request) {
     }
 
     const result = await pool.query(
-      `INSERT INTO messages (class_id, text, image_url, sender, timestamp)
-       VALUES ($1, $2, $3, 'user', NOW()) RETURNING *`,
-      [classId, croppedText, imageUrl || null]
+      `INSERT INTO messages (class_id, text, image_url, sender, timestamp,file_type)
+       VALUES ($1, $2, $3, 'user', NOW(),$4) RETURNING *`,
+      [classId, croppedText, imageUrl || null,fileType || null]
     );
 
     return NextResponse.json({ success: true, message: result.rows[0] });
