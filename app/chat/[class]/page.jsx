@@ -45,7 +45,9 @@ export default function ChatPage() {
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
-
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
   // Apply dark mode class to body
   useEffect(() => {
     if (darkMode) {
@@ -497,10 +499,10 @@ const handleDeleteMessage = async (messageId) => {
       {/* Chat interface */}
 <div className={`relative z-10 flex flex-col h-full ${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-sm ${showSearchPanel ? 'flex-1' : 'w-full'} transition-colors duration-300`}>
   <div className="absolute inset-0 flex flex-col items-center justify-center z-9 pointer-events-none select-none">
-    <h1 className={`${darkMode ? 'text-gray-700' : 'text-gray-800'} opacity-10 text-2xl md:text-[5rem] font-extrabold uppercase tracking-widest drop-shadow-md select-none user-select-none pointer-events-none`}>
+    <h1 className={`${darkMode ? 'text-gray-400' : 'text-gray-800'} opacity-10 text-2xl md:text-[5rem] font-extrabold uppercase tracking-widest drop-shadow-md select-none user-select-none pointer-events-none`}>
       BVCOE TalkZone
     </h1>
-    <h2 className={`${darkMode ? 'text-gray-700' : 'text-gray-800'} opacity-10 text-lg md:text-3xl font-semibold uppercase tracking-widest mt-4 drop-shadow-md select-none user-select-none pointer-events-none`}>
+    <h2 className={`${darkMode ? 'text-gray-400' : 'text-gray-800'} opacity-10 text-lg md:text-3xl font-semibold uppercase tracking-widest mt-4 drop-shadow-md select-none user-select-none pointer-events-none`}>
       Connect. Chat. Collaborate.
     </h2>
   </div>
@@ -515,10 +517,10 @@ const handleDeleteMessage = async (messageId) => {
       </button>
       <button 
         onClick={toggleSearchPanel}
-        className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors rounded-lg`}
+        className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors rounded-lg flex items-center gap-2`}
         title="Search messages"
       >
-        <FiSearch size={18} />
+        <FiSearch size={18} /> <span>Search</span>
       </button>
     </div>
     <h1 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{className}</h1>
@@ -609,7 +611,7 @@ const handleDeleteMessage = async (messageId) => {
               <p className="whitespace-pre-line">
                 {isSearching && searchQuery ? (
                   <>
-                    {msg.text.split(new RegExp(`(${searchQuery})`, 'gi')).map((part, i) => 
+                    {msg.text.split(new RegExp(`(${escapeRegex(searchQuery)})`, 'gi')).map((part, i) => 
                       part.toLowerCase() === searchQuery.toLowerCase() ? 
                       <mark key={i} className={`${darkMode ? 'bg-yellow-600 text-white' : 'bg-yellow-200'} bg-opacity-80`}>{part}</mark> : part
                     )}
