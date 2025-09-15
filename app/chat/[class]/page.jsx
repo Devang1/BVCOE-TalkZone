@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useParams } from 'next/navigation';
-import { FiSend, FiImage, FiX, FiDownload, FiFile, FiSearch, FiArrowLeft, FiCalendar, FiMoon, FiSun,FiTrash2 } from 'react-icons/fi';
+import { FiSend, FiZoomIn,FiImage, FiX, FiDownload, FiFile, FiSearch, FiArrowLeft, FiCalendar, FiMoon, FiSun,FiTrash2 } from 'react-icons/fi';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -16,6 +16,7 @@ export default function ChatPage() {
   const [filePreview, setFilePreview] = useState(null);
   const [fileType, setFileType] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [classId, setClassId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -26,13 +27,17 @@ export default function ChatPage() {
   const [darkMode, setDarkMode] = useState(false);
   const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [touchStart, setTouchStart] = useState(null);
+  const lastSubmitTime = useRef(0);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
   const searchInputRef = useRef(null);
   const dateInputRef = useRef(null);
   const messageRefs = useRef({});
+  const formRef = useRef(null);
   const [nickname, setNickname] = useState("");
 
   useEffect(() => {
@@ -41,13 +46,16 @@ export default function ChatPage() {
       setNickname(savedNickname);
     }
   }, []);
+  
   // Toggle dark mode
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+  
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  
   // Apply dark mode class to body
   useEffect(() => {
     if (darkMode) {
@@ -56,7 +64,17 @@ function escapeRegex(str) {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+  // Add keyboard shortcut to close image modal
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape' && showImageModal) {
+      setShowImageModal(false);
+    }
+  };
 
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [showImageModal]);
   const handlePaste = async (e) => {
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
@@ -68,29 +86,29 @@ function escapeRegex(str) {
       }
     }
   };
-const handleDeleteMessage = async (messageId) => {
+  
+  const handleDeleteMessage = async (messageId) => {
+    try {
+      const res = await fetch(`/api/messages?id=${messageId}`, {
+        method: 'DELETE',
+      });
 
-  try {
-    const res = await fetch(`/api/messages?id=${messageId}`, {
-      method: 'DELETE',
-    });
+      const data = await res.json();
 
-    const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete message");
+      }
 
-    if (!res.ok) {
-      throw new Error(data.error || "Failed to delete message");
+      // Remove deleted message from state
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg.id !== messageId)
+      );
+
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      alert(error.message);
     }
-
-    // Remove deleted message from state
-    setMessages((prevMessages) =>
-      prevMessages.filter((msg) => msg.id !== messageId)
-    );
-
-  } catch (error) {
-    console.error("Error deleting message:", error);
-    alert(error.message);
-  }
-};
+  };
 
   const uploadPastedImage = async (file) => {
     setIsUploading(true);
@@ -163,30 +181,63 @@ const handleDeleteMessage = async (messageId) => {
     }
   }, [messages, filteredMessages]);
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
+  // FIXED: HandleSendMessage with proper debouncing
+  const handleSendMessage = useCallback(async () => {
+    // Prevent sending if no content
     if (!newMessage.trim() && !filePreview) return;
-
-    const res = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        classId,
-        nickname,
-        text: newMessage || null,
-        imageUrl: filePreview || null,
-        fileType: fileType || null,
-      }),
-    });
-    const result = await res.json();
-    if (result.success) {
-      setMessages(prev => [...prev, result.message]);
-      setFilteredMessages(prev => [...prev, result.message]);
-      setNewMessage('');
-      setFilePreview(null);
-      setFileType(null);
+    
+    // Prevent if already sending
+    if (isSending) return;
+    
+    // Rate limiting - prevent multiple submissions within 2 seconds
+    const now = Date.now();
+    if (now - lastSubmitTime.current < 2000) {
+      return;
     }
-  };
+    
+    lastSubmitTime.current = now;
+    setIsSending(true);
+
+    // Store values locally before resetting
+    const messageToSend = newMessage;
+    const fileToSend = filePreview;
+    const typeToSend = fileType;
+
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId,
+          nickname,
+          text: messageToSend || null,
+          imageUrl: fileToSend || null,
+          fileType: typeToSend || null,
+        }),
+      });
+      
+      const result = await res.json();
+      
+      if (result.success) {
+        setMessages(prev => [...prev, result.message]);
+        setFilteredMessages(prev => [...prev, result.message]);
+        setNewMessage('');
+        setFilePreview(null);
+        setFileType(null);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message');
+    } finally {
+      setIsSending(false);
+    }
+  }, [newMessage, filePreview, fileType, classId, nickname, isSending]);
+
+  const handleFormSubmit = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleSendMessage();
+  }, [handleSendMessage]);
 
   const handleFileUpload = async (e, type) => {
     const file = e.target.files?.[0];
@@ -376,7 +427,7 @@ const handleDeleteMessage = async (messageId) => {
     <div className={`relative flex h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} overflow-hidden transition-colors duration-300`}>
       {/* Background Design */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className={`absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNlNWU1ZTUiIG9wYWNpdHk9IjAuMiI+PHBhdGggZD0iTTIwIDBDOC45NTQgMCAwIDguOTU0IDAgMjBzOC45NTQgMjAgMjAgMjAgMjAtOC45NTQgMjAtMjBTMzEuMDQ2IDAgMjAgMHptMCAzOC4xMTRjLTEwLjAwNSAwLTE4LjExNC04LjEtMTguMTE0LTE4LjExNEMxLjg4NiA5Ljk5NSAxMC4wMDEgMS44ODYgMjAgMS44ODYgMzAuMDA1IDEuODg2IDM4LjExNCA5Ljk5NSAzOC4xMTQgMjBjMCAxMC4wMTQtOC4xMSAxOC4xMTQtMTguMTE0IDE4LjExNHoiLz48L2c+PC9nPjwvc3ZnPg==')] ${darkMode ? 'opacity-5' : 'opacity-10'}`}></div>
+        <div className={`absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNlNWU1ZTUiIG9wYWNpdHk9IjAuMiI+PHBhdGggZD0iTTIwIDBDOC45NTQgMCAwIDguOTU0IDAgMjBzOC45NTQgMjAgMjAgMjAgMjAtOC45NTQgMjAtMjBTMzEuMDQ2IDAgMjAgMHptMCAzOC4xMTRjLTEwLjAwNSAwLTE4LjExNC04LjEtMTguMTE0LTE4LjExNEMxLjg4NiA5Ljk5NSAxMC4wMDEgMS44ODYgMjAgMS44ODYgMzAuMDA1IDEuODg2IDM4LjExNCA5Ljk5NSAz4LjExNCAyMGMwIDEwLjAxNC04LjExIDE4LjExNC0xOC4xMTQgMTguMTE0eiIvPjwvZz48L2c+PC9zdmc+')] ${darkMode ? 'opacity-5' : 'opacity-10'}`}></div>
         <div className={`absolute inset-0 bg-gradient-to-br ${darkMode ? 'from-blue-900/10 to-purple-900/10' : 'from-blue-50/10 to-purple-50/10'}`}></div>
       </div>
 
@@ -497,240 +548,309 @@ const handleDeleteMessage = async (messageId) => {
       )}
 
       {/* Chat interface */}
-<div className={`relative z-10 flex flex-col h-full ${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-sm ${showSearchPanel ? 'flex-1' : 'w-full'} transition-colors duration-300`}>
-  <div className="absolute inset-0 flex flex-col items-center justify-center z-9 pointer-events-none select-none">
-    <h1 className={`${darkMode ? 'text-gray-400' : 'text-gray-800'} opacity-10 text-2xl md:text-[5rem] font-extrabold uppercase tracking-widest drop-shadow-md select-none user-select-none pointer-events-none`}>
-      BVCOE TalkZone
-    </h1>
-    <h2 className={`${darkMode ? 'text-gray-400' : 'text-gray-800'} opacity-10 text-lg md:text-3xl font-semibold uppercase tracking-widest mt-4 drop-shadow-md select-none user-select-none pointer-events-none`}>
-      Connect. Chat. Collaborate.
-    </h2>
-  </div>
+      <div className={`relative z-10 flex flex-col h-full ${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-sm ${showSearchPanel ? 'flex-1' : 'w-full'} transition-colors duration-300`}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-9 pointer-events-none select-none">
+          <h1 className={`${darkMode ? 'text-gray-400' : 'text-gray-800'} opacity-10 text-2xl md:text-[5rem] font-extrabold uppercase tracking-widest drop-shadow-md select-none user-select-none pointer-events-none`}>
+            BVCOE TalkZone
+          </h1>
+          <h2 className={`${darkMode ? 'text-gray-400' : 'text-gray-800'} opacity-10 text-lg md:text-3xl font-semibold uppercase tracking-widest mt-4 drop-shadow-md select-none user-select-none pointer-events-none`}>
+            Connect. Chat. Collaborate.
+          </h2>
+        </div>
 
-  <header className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm p-4 flex justify-between items-center border-b transition-colors duration-300`}>
-    <div className="flex items-center space-x-2">
-      <button 
-        onClick={() => router.back()} 
-        className={`${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-800 hover:text-gray-700'} transition-colors`}
-      >
-        ← Back
-      </button>
-      <button 
-        onClick={toggleSearchPanel}
-        className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors rounded-lg flex items-center gap-2`}
-        title="Search messages"
-      >
-        <FiSearch size={18} /> <span>Search</span>
-      </button>
-    </div>
-    <h1 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{className}</h1>
-    <button
-      onClick={toggleDarkMode}
-      className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors`}
-      title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-    >
-      {darkMode ? <FiSun size={18} /> : <FiMoon size={18} />}
-    </button>
-  </header>
-  
-  <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
-    {filteredMessages.length === 0 ? (
-      <div className={`flex flex-col items-center justify-center h-full ${darkMode ? 'text-gray-500' : 'text-gray-800'}`}>
-        <div className="text-2xl mb-2">💬</div>
-        <p className="text-lg font-medium">No messages yet</p>
-        <p className="text-sm">Start the conversation!</p>
-      </div>
-    ) : (
-      filteredMessages.map(msg => (
-        <motion.div 
-          key={msg.id} 
-          initial={{ opacity: 0, y: 10 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          className={`flex justify-end`}
-          ref={el => messageRefs.current[msg.id] = el}
-        >
-          <div className={`max-w-xs md:max-w-md rounded-lg p-3 ${msg.sender === nickname ? (darkMode ? 'bg-blue-600 text-white rounded-br-none' : 'bg-blue-500 text-white rounded-br-none') : (darkMode ? 'bg-gray-700 text-white rounded-bl-none' : 'bg-gray-200 text-gray-900 rounded-bl-none shadow-sm')} transition-colors duration-300 group relative`}>
-            {/* Delete button (only shown for user's own messages on hover) */}
-            {msg.sender === nickname && (
-              <button
-                onClick={() => handleDeleteMessage(msg.id)}
-                className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-100  transition-opacity duration-200 shadow-md z-10"
-                title="Delete message"
-              >
-                <FiTrash2 size={14} />
-              </button>
-            )}
-            
-            {/* Sender name display */}
-            <div className={`text-xs font-medium mb-1 ${msg.sender === nickname ? (darkMode ? 'text-blue-200' : 'text-blue-100') : (darkMode ? 'text-gray-300' : 'text-gray-600')}`}>
-              {msg.sender === nickname ? 'You' : msg.sender}
+        <header className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm p-4 flex justify-between items-center border-b transition-colors duration-300`}>
+          <div className="flex items-center space-x-2">
+            <button 
+              onClick={() => router.back()} 
+              className={`${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-800 hover:text-gray-700'} transition-colors`}
+            >
+              ← Back
+            </button>
+            <button 
+              onClick={toggleSearchPanel}
+              className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors rounded-lg flex items-center gap-2`}
+              title="Search messages"
+            >
+              <FiSearch size={18} /> <span>Search</span>
+            </button>
+          </div>
+          <h1 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{className}</h1>
+          <button
+            onClick={toggleDarkMode}
+            className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors`}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {darkMode ? <FiSun size={18} /> : <FiMoon size={18} />}
+          </button>
+        </header>
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
+          {filteredMessages.length === 0 ? (
+            <div className={`flex flex-col items-center justify-center h-full ${darkMode ? 'text-gray-500' : 'text-gray-800'}`}>
+              <div className="text-2xl mb-2">💬</div>
+              <p className="text-lg font-medium">No messages yet</p>
+              <p className="text-sm">Start the conversation!</p>
             </div>
-            
-            {msg.image_url && msg.file_type === 'image' && (
-              <div className="mb-2 relative group">
-                <img 
-                  src={msg.image_url} 
-                  alt="" 
-                  className="rounded-lg max-h-48 w-full object-cover cursor-pointer" 
-                  onClick={() => downloadFile(msg.image_url, 'chat-image')} 
-                />
-                <button 
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    downloadFile(msg.image_url, 'chat-image'); 
-                  }} 
-                  className="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <FiDownload size={16} />
-                </button>
-                
-              </div>
-            )}
-            
-            {msg.image_url && msg.file_type === 'document' && (
-              <div className={`mb-2 p-3 ${darkMode ? 'bg-gray-600' : 'bg-white bg-opacity-20'} rounded-lg flex items-center space-x-2 group transition-colors`}>
-                <span className="text-2xl">{getFileIcon(msg.image_url)}</span>
-                <div className="flex-1">
-                  <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
-                    {msg.image_url.split('/').pop().split('.').slice(0, -1).join('.')}
-                  </p>
-                  <p className={`text-xs ${darkMode ? 'text-gray-300' : 'opacity-75 text-black'}`}>
-                    {msg.image_url.split('.').pop().toUpperCase()} document
+          ) : (
+            filteredMessages.map(msg => (
+              <motion.div 
+                key={msg.id} 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className={`flex justify-end`}
+                ref={el => messageRefs.current[msg.id] = el}
+              >
+                <div className={`max-w-xs md:max-w-md rounded-lg p-3 ${msg.sender === nickname ? (darkMode ? 'bg-blue-600 text-white rounded-br-none' : 'bg-blue-500 text-white rounded-br-none') : (darkMode ? 'bg-gray-700 text-white rounded-bl-none' : 'bg-gray-200 text-gray-900 rounded-bl-none shadow-sm')} transition-colors duration-300 group relative`}>
+                  {/* Delete button (only shown for user's own messages on hover) */}
+                  {msg.sender === nickname && (
+                    <button
+                      onClick={() => handleDeleteMessage(msg.id)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-100  transition-opacity duration-200 shadow-md z-10"
+                      title="Delete message"
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  )}
+                  
+                  {/* Sender name display */}
+                  <div className={`text-xs font-medium mb-1 ${msg.sender === nickname ? (darkMode ? 'text-blue-200' : 'text-blue-100') : (darkMode ? 'text-gray-300' : 'text-gray-600')}`}>
+                    {msg.sender === nickname ? 'You' : msg.sender}
+                  </div>
+                  
+                  {msg.image_url && msg.file_type === 'image' && (
+                    <div className="mb-2 relative group">
+                      <img 
+                        src={msg.image_url} 
+                        alt="" 
+                        className="rounded-lg max-h-48 w-full object-cover cursor-pointer" 
+                        onClick={() => {
+                          setSelectedImage(msg.image_url);
+                          setShowImageModal(true);
+                        }} 
+                      />
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          downloadFile(msg.image_url, 'chat-image'); 
+                        }} 
+                        className="absolute bottom-2 right-2 cursor-pointer bg-black bg-opacity-50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <FiDownload size={16} />
+                      </button>
+                      <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                        <FiZoomIn size={14} />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {msg.image_url && msg.file_type === 'document' && (
+                    <div className={`mb-2 p-3 ${darkMode ? 'bg-gray-600' : 'bg-white bg-opacity-20'} rounded-lg flex items-center space-x-2 group transition-colors`}>
+                      <span className="text-2xl">{getFileIcon(msg.image_url)}</span>
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                          {msg.image_url.split('/').pop().split('.').slice(0, -1).join('.')}
+                        </p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-300' : 'opacity-75 text-black'}`}>
+                          {msg.image_url.split('.').pop().toUpperCase()} document
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => downloadFile(msg.image_url, 'document')} 
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black bg-opacity-50 rounded-full text-white"
+                      >
+                        <FiDownload size={16} />
+                      </button>
+                    </div>
+                  )}
+                  
+                  {msg.text && (
+                    <p className="whitespace-pre-line">
+                      {isSearching && searchQuery ? (
+                        <>
+                          {msg.text.split(new RegExp(`(${escapeRegex(searchQuery)})`, 'gi')).map((part, i) => 
+                            part.toLowerCase() === searchQuery.toLowerCase() ? 
+                            <mark key={i} className={`${darkMode ? 'bg-yellow-600 text-white' : 'bg-yellow-200'} bg-opacity-80`}>{part}</mark> : part
+                          )}
+                        </>
+                      ) : (
+                        msg.text
+                      )}
+                    </p>
+                  )}
+                  <p className={`text-xs mt-1 ${msg.sender === nickname ? (darkMode ? 'text-blue-200' : 'text-blue-100') : (darkMode ? 'text-gray-400' : 'text-gray-600')}`}>
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
+              </motion.div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+        
+        <form 
+          ref={formRef}
+          onSubmit={handleFormSubmit}
+          className={`relative ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t p-4 transition-colors duration-300`}
+        >
+          {filePreview && (
+            <div className="relative mb-3 group">
+              {fileType === 'image' ? (
+                <div className={`w-32 h-32 rounded-lg overflow-hidden border ${darkMode ? 'border-gray-600' : 'border-gray-200'} transition-colors`}>
+                  <img 
+                    src={filePreview} 
+                    alt="" 
+                    className="w-full h-full object-cover cursor-pointer" 
+                    onClick={() => downloadFile(filePreview, 'preview-image')} 
+                  />
+                </div>
+              ) : (
+                <div className={`p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg flex items-center space-x-2 w-64 transition-colors`}>
+                  <span className="text-2xl">{getFileIcon(filePreview)}</span>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                      {filePreview.split('/').pop().split('.').slice(0, -1).join('.')}
+                    </p>
+                    <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-800'}`}>
+                      {filePreview.split('.').pop().toUpperCase()} document
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="absolute top-0 right-0 flex space-x-1">
                 <button 
-                  onClick={() => downloadFile(msg.image_url, 'document')} 
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black bg-opacity-50 rounded-full text-white"
+                  type="button"
+                  onClick={removeFilePreview} 
+                  className="bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                >
+                  <FiX size={16} />
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => downloadFile(filePreview, fileType === 'image' ? 'preview-image' : 'document')} 
+                  className="bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70 transition-colors"
                 >
                   <FiDownload size={16} />
                 </button>
               </div>
-            )}
-            
-            {msg.text && (
-              <p className="whitespace-pre-line">
-                {isSearching && searchQuery ? (
-                  <>
-                    {msg.text.split(new RegExp(`(${escapeRegex(searchQuery)})`, 'gi')).map((part, i) => 
-                      part.toLowerCase() === searchQuery.toLowerCase() ? 
-                      <mark key={i} className={`${darkMode ? 'bg-yellow-600 text-white' : 'bg-yellow-200'} bg-opacity-80`}>{part}</mark> : part
-                    )}
-                  </>
-                ) : (
-                  msg.text
-                )}
-              </p>
-            )}
-            <p className={`text-xs mt-1 ${msg.sender === nickname ? (darkMode ? 'text-blue-200' : 'text-blue-100') : (darkMode ? 'text-gray-400' : 'text-gray-600')}`}>
-              {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </p>
-          </div>
-        </motion.div>
-      ))
-    )}
-    <div ref={messagesEndRef} />
-  </div>
-  
-  <form onSubmit={handleSendMessage} className={`relative ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t p-4 transition-colors duration-300`}>
-    {filePreview && (
-      <div className="relative mb-3 group">
-        {fileType === 'image' ? (
-          <div className={`w-32 h-32 rounded-lg overflow-hidden border ${darkMode ? 'border-gray-600' : 'border-gray-200'} transition-colors`}>
-            <img 
-              src={filePreview} 
-              alt="" 
-              className="w-full h-full object-cover cursor-pointer" 
-              onClick={() => downloadFile(filePreview, 'preview-image')} 
-            />
-          </div>
-        ) : (
-          <div className={`p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg flex items-center space-x-2 w-64 transition-colors`}>
-            <span className="text-2xl">{getFileIcon(filePreview)}</span>
-            <div className="flex-1">
-              <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
-                {filePreview.split('/').pop().split('.').slice(0, -1).join('.')}
-              </p>
-              <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-800'}`}>
-                {filePreview.split('.').pop().toUpperCase()} document
-              </p>
             </div>
+          )}
+          <div className="flex items-center space-x-2">
+            <textarea
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+               onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+              onPaste={handlePaste}
+              placeholder="Type a message... or paste an image"
+              rows={3}
+              className={`flex-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' : 'bg-white border-gray-300 text-black placeholder-gray-500 focus:ring-blue-500 focus:border-transparent'} rounded-lg py-2 px-4 focus:ring-2 resize-none transition-colors`}
+            />
+
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={(e) => handleFileUpload(e, 'image')} 
+              accept="image/*" 
+              className="hidden" 
+            />
+            <input 
+              type="file" 
+              ref={docInputRef} 
+              onChange={(e) => handleFileUpload(e, 'document')} 
+              accept=".pdf,.doc,.docx,.txt" 
+              className="hidden" 
+            />
+            
+            <div className="flex flex-col space-y-2">
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current.click()} 
+                disabled={isUploading} 
+                className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors`}
+                title="Upload image"
+              >
+                {isUploading ? <span className="animate-spin">...</span> : <FiImage size={20} />}
+              </button>
+              
+              <button 
+                type="button" 
+                onClick={() => docInputRef.current.click()} 
+                disabled={isUploading} 
+                className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors`}
+                title="Upload document"
+              >
+                {isUploading ? <span className="animate-spin">...</span> : <FiFile size={20} />}
+              </button>
+            </div>
+            
+            <button 
+              type="submit" 
+              disabled={(!newMessage.trim() && !filePreview) || isUploading || isSending} 
+              className={`p-2 rounded-full transition-colors ${
+                isSending || isUploading
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-500 text-white hover:bg-blue-600'
+              }`}
+            >
+              {isSending ? (
+                <span className="animate-pulse">...</span>
+              ) : (
+                <FiSend size={20} />
+              )}
+            </button>
           </div>
-        )}
-        <div className="absolute top-0 right-0 flex space-x-1">
+        </form>
+      </div>
+      {/* Image Preview Modal */}
+{showImageModal && selectedImage && (
+  <div 
+    className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" 
+    onClick={() => setShowImageModal(false)}
+    onTouchStart={(e) => setTouchStart(e.touches[0].clientY)}
+    onTouchMove={(e) => {
+      if (!touchStart) return;
+      const touchEnd = e.touches[0].clientY;
+      if (touchEnd - touchStart > 100) {
+        setShowImageModal(false);
+      }
+    }}
+    onTouchEnd={() => setTouchStart(null)}
+  >
+    <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
+      <button 
+        className="absolute -top-10 right-0 text-white text-3xl z-10"
+        onClick={() => setShowImageModal(false)}
+      >
+        <FiX size={28} />
+      </button>
+      <div className="bg-gray-900 rounded-lg overflow-hidden">
+        <img 
+          src={selectedImage} 
+          alt="Preview" 
+          className="w-full h-auto max-h-[80vh] object-contain"
+        />
+        <div className="p-3 bg-gray-800 flex justify-between items-center">
           <button 
-            type="button"
-            onClick={removeFilePreview} 
-            className="bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+            onClick={() => downloadFile(selectedImage, 'chat-image')}
+            className="flex items-center text-white hover:text-blue-300 transition-colors"
           >
-            <FiX size={16} />
+            <FiDownload className="mr-2" /> Download
           </button>
           <button 
-            type="button"
-            onClick={() => downloadFile(filePreview, fileType === 'image' ? 'preview-image' : 'document')} 
-            className="bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70 transition-colors"
+            onClick={() => setShowImageModal(false)}
+            className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors"
           >
-            <FiDownload size={16} />
+            Close
           </button>
         </div>
       </div>
-    )}
-    <div className="flex items-center space-x-2">
-      <textarea
-        value={newMessage}
-        onChange={(e) => setNewMessage(e.target.value)}
-        onPaste={handlePaste}
-        placeholder="Type a message... or paste an image"
-        rows={3}
-        className={`flex-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' : 'bg-white border-gray-300 text-black placeholder-gray-500 focus:ring-blue-500 focus:border-transparent'} rounded-lg py-2 px-4 focus:ring-2 resize-none transition-colors`}
-      />
-
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={(e) => handleFileUpload(e, 'image')} 
-        accept="image/*" 
-        className="hidden" 
-      />
-      <input 
-        type="file" 
-        ref={docInputRef} 
-        onChange={(e) => handleFileUpload(e, 'document')} 
-        accept=".pdf,.doc,.docx,.txt" 
-        className="hidden" 
-      />
-      
-      <div className="flex flex-col space-y-2">
-        <button 
-          type="button" 
-          onClick={() => fileInputRef.current.click()} 
-          disabled={isUploading} 
-          className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors`}
-          title="Upload image"
-        >
-          {isUploading ? <span className="animate-spin">...</span> : <FiImage size={20} />}
-        </button>
-        
-        <button 
-          type="button" 
-          onClick={() => docInputRef.current.click()} 
-          disabled={isUploading} 
-          className={`p-2 ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-800 hover:text-blue-500'} transition-colors`}
-          title="Upload document"
-        >
-          {isUploading ? <span className="animate-spin">...</span> : <FiFile size={20} />}
-        </button>
-      </div>
-      
-      <button 
-        type="submit" 
-        disabled={(!newMessage.trim() && !filePreview) || isUploading} 
-        className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors disabled:opacity-50"
-      >
-        <FiSend size={20} />
-      </button>
     </div>
-  </form>
-</div>
+  </div>
+)}
     </div>
   );
 }
